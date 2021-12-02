@@ -19,7 +19,7 @@ using std::endl;
 
 #define SQRT2 1.41
 
-struct normalizedData {
+struct NormalizedData {
 	Mat T1;
     Mat T2;
 	vector<pair<Point2f, Point2f>> newPtPairs;
@@ -29,14 +29,14 @@ struct RANSACDiffs
 {
     int inliersNum;  // number of inliers
     vector<float> distances; // euclidean distances
-    vector<bool> isInliers; // vector of inlier/outlier segmenttion results; true: inlier false: outlier
+    vector<bool> isInliers; // vector of inlier/outlier segmentation results; true: inlier false: outlier
 };
 
-struct normalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
+struct NormalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
 {	
 	int ptsNum = pts2D.size();
 
-	//calculate means (they will be the center of coordinate systems)
+	// calculate means (they will be the center of coordinate systems)
 	float mean1x = 0.0, mean1y = 0.0, meanx_tick = 0.0, meany_tick = 0.0;
 	for (int i = 0; i < ptsNum; i++) 
     {
@@ -87,7 +87,8 @@ struct normalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
 	scale_tick.at<float>(0, 0) = SQRT2 / sqrt(spreadx_tick);
 	scale_tick.at<float>(1, 1) = SQRT2 / sqrt(spready_tick);
 
-    struct normalizedData ret;
+    struct NormalizedData ret;
+
 	ret.T1 = scale1 * offs1;
 	ret.T2 = scale_tick * offs_tick;
 
@@ -139,7 +140,6 @@ Mat calcHomography(vector<pair<Point2f, Point2f>> pointPairs)
         A.at<float>(2 * i + 1, 6) = -v2 * u1;
         A.at<float>(2 * i + 1, 7) = -v2 * v1;
         A.at<float>(2 * i + 1, 8) = -v2;
-
     }
 
     Mat eVecs(9, 9, CV_32F), eVals(9, 9, CV_32F);
@@ -152,11 +152,8 @@ Mat calcHomography(vector<pair<Point2f, Point2f>> pointPairs)
         H.at<float>(i / 3, i % 3) = eVecs.at<float>(8, i);
     }
 
-    // cout << "H tick unnormalized\n" << H << endl;
-
     //Normalize:
     H = H * (1.0 / H.at<float>(2, 2));
-    // cout << "H tick normalized\n" << H << endl;
 
     return H;
 }
@@ -177,8 +174,8 @@ void transformImage(Mat origImg, Mat& newImage, Mat tr, bool isPerspective)
         for (int y = 0; y < newHEIGHT; y++)
         {
             Mat pt(3, 1, CV_32F);
-            pt.at<float>(0, 0) = x-WIDTH;
-            pt.at<float>(1, 0) = y-(0.25*HEIGHT);
+            pt.at<float>(0, 0) = x;
+            pt.at<float>(1, 0) = y;
             pt.at<float>(2, 0) = 1.0;
 
             Mat ptTransformed = invTr * pt;
@@ -211,7 +208,7 @@ RANSACDiffs Distance(vector<pair<Point2f, Point2f>> goodMatches, Mat H, float th
     for (int idx = 0; idx < num; idx++)
     {
         Point2f u = goodMatches[idx].first;
-        cout << "u\n" << u << endl;
+        // cout << "u\n" << u << endl;
 
         Mat u_tick(3, 1, CV_32F);
         u_tick.at<float>(0, 0) = goodMatches[idx].second.x;
@@ -225,10 +222,10 @@ RANSACDiffs Distance(vector<pair<Point2f, Point2f>> goodMatches, Mat H, float th
         float u_tick_y = ptTransformed.at<float>(1, 0);
 
         Point2f u_tick_p(u_tick_x, u_tick_y);
-        cout << "u_tick\n" << u_tick_p << endl;
+        // cout << "u_tick\n" << u_tick_p << endl;
 
         double diff = cv::norm(u - u_tick_p);
-        cout << "diff\n" << diff << endl;
+        // cout << "diff\n" << diff << endl;
 
         distances.push_back(diff);
         if (diff < threshold)
@@ -297,7 +294,7 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
         minimalSample.push_back(pt3);
         minimalSample.push_back(pt4);
 
-        normalizedData norm = NormalizeData(minimalSample);
+        NormalizedData norm = NormalizeData(minimalSample);
         vector<pair<Point2f, Point2f> > normPointPairs = norm.newPtPairs;
         Mat T1 = norm.T1;
         Mat T2 = norm.T2;
@@ -321,7 +318,6 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
             bestH = H;
             // cout << "best H:\n" << H << endl;
         }
-
     }
 
     // Finally, inliers are found with best H
@@ -338,7 +334,7 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
     }
 
     // Final H is found with inlier point pairs
-    normalizedData norm_final = NormalizeData(inlierPts);
+    NormalizedData norm_final = NormalizeData(inlierPts);
     vector<pair<Point2f, Point2f> > normPointPairs_final = norm_final.newPtPairs;
     Mat T1_final = norm_final.T1;
     Mat T2_final = norm_final.T2;
@@ -353,85 +349,68 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
 
 int main(int argc, char* argv[])
 {
-    Mat img1 = imread("Dev1_Image_w960_h600_fn1000.jpg", IMREAD_COLOR);
-    Mat img2 = imread("Dev2_Image_w960_h600_fn1000.jpg", IMREAD_COLOR);
-
-    if (img1.empty() || img2.empty())
+    for (int i = 0; i < 10; i++)
     {
-        cout << "Could not open or find the image!\n" << endl;
-        return -1;
-    }
+        Mat img1 = imread("Dev1_Image_w960_h600_fn100" + std::to_string(i) + ".jpg", IMREAD_COLOR);
+        Mat img2 = imread("Dev2_Image_w960_h600_fn100" + std::to_string(i) + ".jpg", IMREAD_COLOR);
 
-    Mat img1_gray, img2_gray;
-    cvtColor(img1, img1_gray, COLOR_BGR2GRAY);
-    cvtColor(img2, img2_gray, COLOR_BGR2GRAY);
-    
-    //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
-    int minHessian = 400;
-    Ptr<SURF> detector = SURF::create(minHessian);
-    std::vector<KeyPoint> keypoints1, keypoints2;
-    Mat descriptors1, descriptors2;
-    detector->detectAndCompute(img1_gray, noArray(), keypoints1, descriptors1);
-    detector->detectAndCompute(img2_gray, noArray(), keypoints2, descriptors2);
-
-    //-- Step 2: Matching descriptor vectors with a FLANN based matcher
-    // Since SURF is a floating-point descriptor NORM_L2 is used
-    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
-    std::vector< std::vector<DMatch> > knn_matches;
-    matcher->knnMatch(descriptors1, descriptors2, knn_matches, 2);
-
-    //-- Filter matches using the Lowe's ratio test
-    const float ratio_thresh = 0.5f;
-    std::vector<DMatch> good_matches;
-    for (size_t i = 0; i < knn_matches.size(); i++)
-    {
-        if (knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance)
+        if (img1.empty() || img2.empty())
         {
-            good_matches.push_back(knn_matches[i][0]);
+            cout << "Could not open or find the image!\n" << endl;
+            return -1;
         }
-    }
-    //-- Draw matches
-    // Mat img_matches;
-    // drawMatches(img1_gray, keypoints1, img2_gray, keypoints2, good_matches, img_matches, Scalar::all(-1),
-       //  Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
 
-    vector<pair<Point2f, Point2f> > pointPairs;
+        Mat img1_gray, img2_gray;
+        cvtColor(img1, img1_gray, COLOR_BGR2GRAY);
+        cvtColor(img2, img2_gray, COLOR_BGR2GRAY);
 
-    for (size_t i = 0; i < good_matches.size(); i++)
-    {
-        pair<Point2f, Point2f> currPts;
-        currPts.first = keypoints1[good_matches[i].queryIdx].pt;
-        currPts.second = keypoints2[good_matches[i].trainIdx].pt;
-        pointPairs.push_back(currPts);
-    }
+        //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
+        int minHessian = 400;
+        Ptr<SURF> detector = SURF::create(minHessian);
+        std::vector<KeyPoint> keypoints1, keypoints2;
+        Mat descriptors1, descriptors2;
+        detector->detectAndCompute(img1_gray, noArray(), keypoints1, descriptors1);
+        detector->detectAndCompute(img2_gray, noArray(), keypoints2, descriptors2);
 
-    /*
-    normalizedData norm = NormalizeData(pointPairs);
-    vector<pair<Point2f, Point2f> > normPointPairs = norm.newPtPairs;
-    Mat T1 = norm.T1;
-    Mat T2 = norm.T2;
+        //-- Step 2: Matching descriptor vectors with a FLANN based matcher
+        // Since SURF is a floating-point descriptor NORM_L2 is used
+        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
+        std::vector< std::vector<DMatch> > knn_matches;
+        matcher->knnMatch(descriptors1, descriptors2, knn_matches, 2);
 
-    cout << "T1\n" << T1 << endl;
-    cout << "T2\n" << T2 << endl;
+        //-- Filter matches using the Lowe's ratio test
+        const float ratio_thresh = 0.5f;
+        std::vector<DMatch> good_matches;
+        for (size_t i = 0; i < knn_matches.size(); i++)
+        {
+            if (knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance)
+            {
+                good_matches.push_back(knn_matches[i][0]);
+            }
+        }
+        vector<pair<Point2f, Point2f> > pointPairs;
 
-    Mat H_tick = calcHomography(normPointPairs);
+        for (size_t i = 0; i < good_matches.size(); i++)
+        {
+            pair<Point2f, Point2f> currPts;
+            currPts.first = keypoints2[good_matches[i].trainIdx].pt;
+            currPts.second = keypoints1[good_matches[i].queryIdx].pt;
+            pointPairs.push_back(currPts);
+        }
 
-    Mat HT1 = H_tick * T1;
-    Mat H = T2.inv() * HT1;
+        Mat H = EstimateHRANSAC(pointPairs, 0.2, 500);
 
-    */
+        Mat transformedImage = Mat::zeros(1.5 * img1.size().height, 2.0 * img1.size().width, img1.type());
+        transformImage(img1, transformedImage, Mat::eye(3, 3, CV_32F), true);
+        transformImage(img2, transformedImage, H, true);
 
-    Mat H = EstimateHRANSAC(pointPairs, 0.5, 200);
+        imwrite("stitchedImage_"+std::to_string(i)+".png", transformedImage);
+    }   
 
-    Mat transformedImage = Mat::zeros(1.5 * img1.size().height, 2.0 * img1.size().width, img1.type());
-    transformImage(img2, transformedImage, Mat::eye(3, 3, CV_32F), true);
-    transformImage(img1, transformedImage, H, true);
+    namedWindow("Display window", WINDOW_AUTOSIZE); // Create a window for display.
+    // imshow("Display window", transformedImage); // Show our image inside it.
+    waitKey(0); // Wait for a keystroke in the window
 
-    imwrite("res_05.png", transformedImage);
-
-    namedWindow("Display window", WINDOW_AUTOSIZE);// Create a window for display.
-    imshow("Display window", transformedImage);                   // Show our image inside it.
-    waitKey(0);                                          // Wait for a keystroke in the window
     return 0;
 }
 #else
