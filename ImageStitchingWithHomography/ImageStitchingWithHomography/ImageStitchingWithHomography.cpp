@@ -416,7 +416,7 @@ int main(int argc, char* argv[])
 #else
 int main()
 {
-    std::cout << "This tutorial code needs the xfeatures2d contrib module to be run." << std::endl;
+    std::cout << "This code needs the xfeatures2d contrib module to be run." << std::endl;
     return 0;
 }
 #endif
