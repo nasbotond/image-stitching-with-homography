@@ -53,6 +53,8 @@ struct NormalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
 	meanx_tick /= ptsNum;
 	meany_tick /= ptsNum;
 
+    // determine the spread for x and y
+
 	float spread1x = 0.0, spread1y = 0.0, spreadx_tick = 0.0, spready_tick = 0.0;
 
 	for (int i = 0; i < ptsNum; i++) 
@@ -69,6 +71,8 @@ struct NormalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
 	
 	spreadx_tick /= ptsNum;
 	spready_tick /= ptsNum;
+
+    // offset (translation) and scale matrices (3x3)
 
 	Mat offs1 = Mat::eye(3, 3, CV_32F);
     Mat offs_tick = Mat::eye(3, 3, CV_32F);
@@ -89,8 +93,12 @@ struct NormalizedData NormalizeData(vector<pair<Point2f, Point2f>> pts2D)
 
     struct NormalizedData ret;
 
+    // T matrices are scale*translation
+
 	ret.T1 = scale1 * offs1;
 	ret.T2 = scale_tick * offs_tick;
+
+    // apply the normalization to each point (point pair)
 
 	for (int i = 0; i < ptsNum; i++) 
     {
@@ -142,6 +150,9 @@ Mat calcHomography(vector<pair<Point2f, Point2f>> pointPairs)
         A.at<float>(2 * i + 1, 8) = -v2;
     }
 
+    // linear estimation of planar homography (homogoeneous linear system of equations)
+    // optimal solution in the least squares sense is the eigenvalue of A^T A corresponding to the smallest eigenvalue
+
     Mat eVecs(9, 9, CV_32F), eVals(9, 9, CV_32F);
     // cout << "A\n" << A << endl;
     eigen(A.t() * A, eVals, eVecs);
@@ -152,7 +163,7 @@ Mat calcHomography(vector<pair<Point2f, Point2f>> pointPairs)
         H.at<float>(i / 3, i % 3) = eVecs.at<float>(8, i);
     }
 
-    //Normalize:
+    // Normalize:
     H = H * (1.0 / H.at<float>(2, 2));
 
     return H;
@@ -215,18 +226,20 @@ RANSACDiffs Distance(vector<pair<Point2f, Point2f>> goodMatches, Mat H, float th
         u_tick.at<float>(1, 0) = goodMatches[idx].second.y;
         u_tick.at<float>(2, 0) = 1.0;
 
-        Mat ptTransformed = H.inv() * u_tick;
+        Mat ptTransformed = H.inv() * u_tick; // apply the homography
         ptTransformed = (1.0 / ptTransformed.at<float>(2, 0)) * ptTransformed;
 
         float u_tick_x = ptTransformed.at<float>(0, 0);
         float u_tick_y = ptTransformed.at<float>(1, 0);
 
-        Point2f u_tick_p(u_tick_x, u_tick_y);
+        Point2f u_tick_p(u_tick_x, u_tick_y); // convert from Mat to Point2f
         // cout << "u_tick\n" << u_tick_p << endl;
 
+        // find the Eucliedean distance between the original point u and the point determined using homography and u_tick
         double diff = cv::norm(u - u_tick_p);
         // cout << "diff\n" << diff << endl;
 
+        // determine if point is inlier or outlier given a threshold value
         distances.push_back(diff);
         if (diff < threshold)
         {
@@ -238,7 +251,7 @@ RANSACDiffs Distance(vector<pair<Point2f, Point2f>> goodMatches, Mat H, float th
             isInliers.push_back(false);
         }
 
-    }// end for idx;
+    }
 
     ret.distances = distances;
     ret.isInliers = isInliers;
@@ -247,6 +260,7 @@ RANSACDiffs Distance(vector<pair<Point2f, Point2f>> goodMatches, Mat H, float th
     return ret;
 }
 
+// robust method for estimating homography matrix H
 Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold, int iterateNum)
 {
     int num = goodMatches.size();
@@ -256,12 +270,12 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
 
     for (int iter = 0; iter < iterateNum; iter++)
     {
+        // four points needed for planar homography
         float rand1 = (float)(rand()) / RAND_MAX;
         float rand2 = (float)(rand()) / RAND_MAX;
         float rand3 = (float)(rand()) / RAND_MAX;
         float rand4 = (float)(rand()) / RAND_MAX;
 
-        // Generate three different(!) random numbers:
         int index1 = (int)(rand1 * num);
         int index2 = (int)(rand2 * num);
 
@@ -294,6 +308,7 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
         minimalSample.push_back(pt3);
         minimalSample.push_back(pt4);
 
+        // Data normalization
         NormalizedData norm = NormalizeData(minimalSample);
         vector<pair<Point2f, Point2f> > normPointPairs = norm.newPtPairs;
         Mat T1 = norm.T1;
@@ -310,7 +325,7 @@ Mat EstimateHRANSAC(vector<pair<Point2f, Point2f>> goodMatches, float threshold,
         // Compute consensus set
         RANSACDiffs sampleResult = Distance(goodMatches, H, threshold);
 
-        // Check the new test is larger than the best one.
+        // Check if the new test is larger than the best one
 
         if (sampleResult.inliersNum > bestSampleInlierNum)
         {
@@ -364,7 +379,7 @@ int main(int argc, char* argv[])
         cvtColor(img1, img1_gray, COLOR_BGR2GRAY);
         cvtColor(img2, img2_gray, COLOR_BGR2GRAY);
 
-        //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
+        // Detect the keypoints using SURF Detector, compute the descriptors
         int minHessian = 400;
         Ptr<SURF> detector = SURF::create(minHessian);
         std::vector<KeyPoint> keypoints1, keypoints2;
@@ -372,13 +387,16 @@ int main(int argc, char* argv[])
         detector->detectAndCompute(img1_gray, noArray(), keypoints1, descriptors1);
         detector->detectAndCompute(img2_gray, noArray(), keypoints2, descriptors2);
 
-        //-- Step 2: Matching descriptor vectors with a FLANN based matcher
+        // Matching descriptor vectors with a FLANN based matcher
+        // FLANN stands for Fast Library for Approximate Nearest Neighbors
         // Since SURF is a floating-point descriptor NORM_L2 is used
         Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
         std::vector< std::vector<DMatch> > knn_matches;
         matcher->knnMatch(descriptors1, descriptors2, knn_matches, 2);
 
-        //-- Filter matches using the Lowe's ratio test
+        // Filter matches using the Lowe's ratio test
+        // rejects poor matches by computing the ratio between the best and second-best match
+        // If the ratio is below some threshold, the match is discarded as being low-quality
         const float ratio_thresh = 0.5f;
         std::vector<DMatch> good_matches;
         for (size_t i = 0; i < knn_matches.size(); i++)
@@ -401,17 +419,20 @@ int main(int argc, char* argv[])
         Mat H = EstimateHRANSAC(pointPairs, 0.2, 500);
 
         Mat transformedImage = Mat::zeros(1.5 * img1.size().height, 2.0 * img1.size().width, img1.type());
+        // First, add img1 to transformedImage without changing it
         transformImage(img1, transformedImage, Mat::eye(3, 3, CV_32F), true);
+        // Then, add img2 and apply homography 
         transformImage(img2, transformedImage, H, true);
 
-        imwrite("stitchedImage_"+std::to_string(i)+".png", transformedImage);
+        // imwrite("stitchedImage_"+std::to_string(i)+".png", transformedImage);
+        imwrite("demo_stitchedImage_" + std::to_string(i) + ".png", transformedImage);
     }   
 
-    namedWindow("Display window", WINDOW_AUTOSIZE); // Create a window for display.
+    // namedWindow("Display window", WINDOW_AUTOSIZE); // Create a window for display.
     // imshow("Display window", transformedImage); // Show our image inside it.
-    waitKey(0); // Wait for a keystroke in the window
+    // waitKey(0); // Wait for a keystroke in the window
 
-    return 0;
+    // return 0;
 }
 #else
 int main()
